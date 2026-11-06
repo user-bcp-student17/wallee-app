@@ -1,37 +1,34 @@
 <!-- test/evidence.md -->
-# Evidencia — Sprint 1 (W1 y W2)
+# Evidencia (historia → task → test → evidencia)
 
-Comando para todas las filas: `python tools/wallee.py test backend`
-Resultado: **NO EJECUTADO** hasta que `main.py` entregue la salida real. Commit y PR: pendientes (los completa el owner).
+Comando único: `python tools/wallee.py test backend`. Resultado: **NO EJECUTADO** hasta recibir la salida de `main.py`. Commit y PR: pendientes (los completa el Presenter, tarea 7.2).
 
-| HU | AC / tarea | Test ID | Archivo | Resultado | Commit | PR |
-|---|---|---|---|---|---|---|
-| W1 | 2.1 | 2.1-T2 arranque | onboarding-qa.e2e-spec.ts | NO EJECUTADO | pendiente | pendiente |
-| W1 | 2.2 | 2.2-T2 OTP correcto / distinto | onboarding-qa.e2e-spec.ts | NO EJECUTADO | pendiente | pendiente |
-| W1 | 2.2 | prueba unitaria directa del mock | por definir (DECISIÓN 2) | NO EJECUTADO (propuesto) | pendiente | pendiente |
-| W1 | W1-AC1 | W1-AC1-T2 inicio, avance; T3 orden | onboarding-qa.e2e-spec.ts | NO EJECUTADO | pendiente | pendiente |
-| W1 | W1-AC2 | W1-AC2-T2 celular, nombre, documento, código; T3 reintento | onboarding-qa.e2e-spec.ts | NO EJECUTADO | pendiente | pendiente |
-| W1 | W1-AC3 | W1-AC3-T2, W1-AC3-T3 | onboarding-qa.e2e-spec.ts | NO EJECUTADO | pendiente | pendiente |
-| W1 | W1-AC4 | W1-AC4-T2 | onboarding-qa.e2e-spec.ts | NO EJECUTADO | pendiente | pendiente |
-| W1 | UI 6.1 a 6.3 | propuestos (Vitest) | por crear | NO EJECUTADO | pendiente | pendiente |
-| W1 | 7.1 recorrido | recorrido por URL | — | NO EJECUTADO | pendiente | pendiente |
-| W2 | W2-AC1 | W2-AC1-T2, T3 | payments-qa.e2e-spec.ts | NO EJECUTADO | pendiente | pendiente |
-| W2 | W2-AC2 | W2-AC2-T2 (x5), T3 callback | payments-qa.e2e-spec.ts | NO EJECUTADO | pendiente | pendiente |
-| W2 | W2-AC3 | W2-AC3-T2 | payments-qa.e2e-spec.ts | NO EJECUTADO | pendiente | pendiente |
-| W2 | W2-AC4 | W2-AC4-T2, W2-AC4-T3 | payments-qa.e2e-spec.ts | NO EJECUTADO | pendiente | pendiente |
-| W2 | W2-AC6 (PARCIAL) | W2-AC6-T2 | payments-qa.e2e-spec.ts | NO EJECUTADO | pendiente | pendiente |
-| W2 | UI 5.1 a 5.4 | propuestos (Vitest) | por crear | NO EJECUTADO | pendiente | pendiente |
-| Sec. | npm audit, eslint-plugin-security, gitleaks | propuestos | — | NO EJECUTADO | — | — |
-| Crew | `python -m unittest discover -s tests` (SEC-07, SEC-08) | fuera de este sprint | — | NO EJECUTADO | — | — |
+| HU | AC | Task (tasks.md) | Test ID (archivo) | Comando | Resultado | Commit | PR |
+|---|---|---|---|---|---|---|---|
+| W1 | W1-AC1 | 3.1 | W1-AC1-T2 (`w1-onboarding-qa.e2e-spec.ts`) | `python tools/wallee.py test backend` | NO EJECUTADO | pendiente | pendiente |
+| W1 | W1-AC2 | 3.2 | W1-AC2-T2, W1-AC2-T3 | ídem | NO EJECUTADO | pendiente | pendiente |
+| W1 | W1-AC3 | 3.3, 4.1, 4.2 | W1-AC3-T2, W1-AC3-T3 | ídem | NO EJECUTADO | pendiente | pendiente |
+| W1 | W1-AC4 | 5.1 | W1-AC4-T2, W1-AC4-T3 | ídem | NO EJECUTADO | pendiente | pendiente |
+| W1 | verificación simulada | 2.2 | W1-REQ-IDENT-T2 | ídem | NO EJECUTADO | pendiente | pendiente |
+| W1 | UI | 6.1–6.3 | no escrita | `python tools/wallee.py test frontend` | NO EJECUTADO | pendiente | pendiente |
+| W2 | base | 1.1, 1.2 | W2-BASE-T2 | ídem | NO EJECUTADO | pendiente | pendiente |
+| W2 | W2-AC1 | 4.1 | W2-AC1-T2 (`w2-payments-qa.e2e-spec.ts`) | ídem | NO EJECUTADO | pendiente | pendiente |
+| W2 | W2-AC2 | 3.1, 4.2, 4.3 | W2-AC2-T2, W2-AC2-T3 | ídem | NO EJECUTADO | pendiente | pendiente |
+| W2 | W2-AC3 | 4.4 | W2-AC3-T2, W2-AC3-T3 | ídem | NO EJECUTADO | pendiente | pendiente |
+| W2 | W2-AC4 | 3.2, 4.4 | W2-AC4-T2, W2-AC4-T3 | ídem | NO EJECUTADO | pendiente | pendiente |
+| W2 | W2-AC6 (PARCIAL) | 4.5 | W2-AC6-T2, W2-AC6-T3 | ídem | NO EJECUTADO | pendiente | pendiente |
+| W2 | UI | 5.1–5.4 | no escrita | `python tools/wallee.py test frontend` | NO EJECUTADO | pendiente | pendiente |
+| Transversal | SEC-04/05 | — | SEC-05-T3 | `python tools/wallee.py test backend` | NO EJECUTADO | pendiente | pendiente |
+| W1 / W2 | Integración | W1 7.1, W2 7.1 | recorrido por URL `http://localhost:3000` | — | NO EJECUTADO (no hay MCP ni navegador) | pendiente | pendiente |
 
 ## Ejecución de pruebas solicitada
 
-- Fecha: 2026-11-06T15:31:51-05:00
+- Fecha: 2026-11-06T15:43:52-05:00
 - Comando configurado: `python tools/wallee.py test`
 - Comando ejecutado: `C:\Users\Usuario\AppData\Local\Programs\Python\Python313\python.exe tools/wallee.py test`
 - Estado: **FALLÓ** (`failed`)
 - Código de salida: `1`
-- Duración: 9.5 segundos
+- Duración: 8.5 segundos
 - Detalle: ninguno
 
 <details><summary>Salida real (máximo 12 000 caracteres)</summary>
@@ -295,7 +292,7 @@ FAIL test/onboarding.e2e-spec.ts
 Test Suites: 1 failed, 1 passed, 2 total
 Tests:       14 failed, 2 todo, 2 passed, 18 total
 Snapshots:   0 total
-Time:        4.559 s, estimated 8 s
+Time:        3.911 s, estimated 4 s
 Ran all test suites.
 
 ```
