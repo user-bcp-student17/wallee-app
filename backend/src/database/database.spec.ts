@@ -148,7 +148,9 @@ describe('database configuration', () => {
       rmSync(dir, { recursive: true, force: true });
     }
     expect(isSeedEnabled({ DB_SEED: 'true' } as NodeJS.ProcessEnv)).toBe(true);
-    expect(isSeedEnabled({} as NodeJS.ProcessEnv)).toBe(false);
+    expect(isSeedEnabled({ DB_SEED: 'false' } as NodeJS.ProcessEnv)).toBe(false);
+    expect(isSeedEnabled({ NODE_ENV: 'development' } as NodeJS.ProcessEnv)).toBe(true);
+    expect(isSeedEnabled({ NODE_ENV: 'production' } as NodeJS.ProcessEnv)).toBe(false);
   });
 
   it('persists data in a file between connections', async () => {
@@ -186,8 +188,8 @@ describe('DatabaseSeeder', () => {
     }
   };
 
-  it('seeds only when DB_SEED is true', async () => {
+  it('seeds unless DB_SEED is false or the environment is production', async () => {
     expect(await run('true')).toBe(1);
-    expect(await run(undefined)).toBe(0);
+    expect(await run('false')).toBe(0);
   });
 });

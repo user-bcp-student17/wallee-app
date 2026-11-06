@@ -59,4 +59,6 @@ export function dataSourceOptions(env: NodeJS.ProcessEnv = process.env): BetterS
   };
 }
 
-export const isSeedEnabled = (env: NodeJS.ProcessEnv = process.env) => env.DB_SEED === 'true';
+// DB_SEED manda; sin él se siembra solo fuera de producción, como el OTP simulado.
+export const isSeedEnabled = (env: NodeJS.ProcessEnv = process.env) =>
+  env.DB_SEED ? env.DB_SEED === 'true' : env.NODE_ENV !== 'production';

@@ -99,6 +99,28 @@ form { margin-top: 32px; }
 .how p, .benefits p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.6; }
 .landing-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 24px 8%; background: var(--violet-deep); color: #cfc3ff; font-size: 12px; }
 html { scroll-behavior: smooth; }
+a.primary { text-decoration: none; }
+.transfer { max-width: 620px; margin: 0 auto; padding: 48px 6% 72px; }
+.transfer h1 { font-size: 34px; margin: 14px 0 12px; color: var(--violet-deep); }
+.transfer h2 { font-size: 20px; color: var(--violet-deep); margin: 0 0 10px; }
+.transfer .mock-note { margin-bottom: 24px; }
+.balance dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 0 0 28px; }
+.balance dl div { background: #fff; border: 2px solid var(--line); border-radius: 10px; padding: 12px; }
+.balance dt { font-size: 11px; font-weight: 700; letter-spacing: .06em; color: var(--violet); text-transform: uppercase; }
+.balance dd { margin: 6px 0 0; font-family: Manrope, sans-serif; font-size: 18px; font-weight: 800; color: var(--violet-deep); }
+.field select { width: 100%; height: 50px; background: #fff; border: 2px solid var(--line); border-radius: 10px; padding: 0 13px; color: var(--ink); }
+.field select:focus { border-color: var(--violet); box-shadow: 0 0 0 4px #5b2de01f; outline: none; }
+.link { background: none; border: 0; color: var(--violet); text-decoration: underline; cursor: pointer; font: inherit; padding: 0; }
+.outcome { margin-top: 28px; padding: 18px; border-radius: 10px; border-left: 4px solid var(--orange); background: #fff7ec; }
+.outcome.succeeded { border-color: var(--teal); background: #e6faf6; }
+.outcome.rejected { border-color: var(--error); background: #ffe6ee; }
+.outcome p { margin: 0 0 8px; color: var(--muted); line-height: 1.6; }
+.history { margin-top: 40px; }
+.history ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.history li { display: grid; grid-template-columns: 1fr auto auto; gap: 14px; align-items: center; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.tag { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: #efe9ff; color: var(--violet); }
+.tag.succeeded { background: #d8f7ef; color: #00755f; }
+.tag.rejected { background: #ffe6ee; color: var(--error); }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .primary { transition: none; } }
 @media (max-width: 860px) { .hero { grid-template-columns: 1fr; min-height: auto; padding: 48px 7%; } .hero h1 { font-size: 40px; } .hero-card { transform: none; } .how, .benefits { grid-template-columns: 1fr; } .band { padding: 56px 7%; } .landing-footer { padding: 24px 7%; } }
 @media (max-width: 480px) { .landing-nav { gap: 14px; font-size: 13px; } }

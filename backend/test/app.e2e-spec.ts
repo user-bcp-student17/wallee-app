@@ -47,5 +47,10 @@ describe('GET /health (e2e)', () => {
     await request(app.getHttpServer()).put(`/onboarding/${id}/steps/verificacion`).send({ codigo: '123456' }).expect(200).expect((result) => {
       expect(result.body.walletStatus).toBe('ACTIVA');
     });
+    const walletId = created.body.walletId;
+    await request(app.getHttpServer()).get(`/wallets/${walletId}`).expect(200).expect((result) => {
+      expect(result.body).toMatchObject({ id: walletId, status: 'ACTIVE', available: 100000 });
+    });
+    await request(app.getHttpServer()).post('/payments').set('Idempotency-Key', 'onb-e2e').send({ walletId, recipient: 'contact-demo', amountCents: 500 }).expect(202);
   });
 });

@@ -33,6 +33,16 @@ describe('W1 AC1-AC3: asistente de onboarding', () => {
     await user.click(screen.getByRole('button', { name: 'Continuar' }));
     expect(await screen.findByText('Tu wallet está activa.')).toBeInTheDocument();
     expect(screen.getByText('wal_1')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Hacer una transferencia/ })).toHaveAttribute('href', '/transferir');
+    fetchMock.mockResolvedValueOnce(response({ id: 'wal_1', status: 'ACTIVE', balance: 100000, reserved: 0, available: 100000, currency: 'PEN' })).mockResolvedValueOnce(response([]));
+    try {
+      await user.click(screen.getByRole('link', { name: /Hacer una transferencia/ }));
+      expect(await screen.findByRole('heading', { name: 'Transferir' })).toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledWith('/api/wallets/wal_1', undefined);
+      expect(fetchMock).toHaveBeenCalledWith('/api/payments?walletId=wal_1', undefined);
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/onboarding/onb_1/steps/datos', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ nombre: 'Ana', celular: '912345678' }) }));
   });
 
@@ -61,6 +71,17 @@ describe('W1 AC1-AC3: asistente de onboarding', () => {
     render(<App />);
     await userEvent.click(screen.getByRole('button', { name: 'Crear mi wallet' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo completar');
+  });
+
+  it('shows the transfer screen on /transferir', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => ({}) }));
+    window.history.pushState({}, '', '/transferir');
+    try {
+      render(<App />);
+      expect(await screen.findByRole('heading', { name: 'Transferir' })).toBeInTheDocument();
+    } finally {
+      window.history.pushState({}, '', '/');
+    }
   });
 
   it('does not claim activation for invalid progress', async () => {

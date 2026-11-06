@@ -23,7 +23,7 @@ La identidad y el OTP son simulados, sin proveedores externos. El código de pru
 
 ## Base de datos
 
-El backend persiste en **SQLite con TypeORM** (`backend/src/database/`), modelada a partir de `mock-api/bcp-wallet-mock-openapi.yaml`. Es la propuesta del arquitecto y sigue **pendiente de confirmación del Product Owner**. Aún no hay servicios que lean o escriban estas tablas: el onboarding W1 sigue guardando en memoria.
+El backend persiste en **SQLite con TypeORM** (`backend/src/database/`), modelada a partir de `mock-api/bcp-wallet-mock-openapi.yaml`. Es la propuesta del arquitecto y sigue **pendiente de confirmación del Product Owner**. Aún no hay servicios que lean o escriban casi todas estas tablas: el onboarding W1 sigue en memoria y solo W2 (`src/payments/`) usa `wallets`, `payments`, `provider_payments`, `payment_events`, `ledger_entries` y `support_cases`.
 
 | Tabla | Contenido |
 | --- | --- |
@@ -39,7 +39,22 @@ El backend persiste en **SQLite con TypeORM** (`backend/src/database/`), modelad
 
 Los importes son enteros en céntimos y las restricciones (`CHECK`, `UNIQUE`, claves foráneas) replican los rangos y enums del contrato. El esquema se crea con la migración `InitialSchema1730000000000` al arrancar; `synchronize` está desactivado.
 
-Variables (ver `backend/.env.example`): `DB_PATH` (por defecto `data/wallee.sqlite`, o `:memory:`) y `DB_SEED`. Con `DB_SEED=true` se repone idempotentemente `wallet-demo` con 100000 céntimos, dos asientos `FUNDING` de apertura y los destinatarios demo, como `/control/reset` del mock. Compose activa la semilla y guarda la base en el volumen `wallee-data` (`/app/data`). Los datos son simulados, no una integración con BCP.
+Variables (ver `backend/.env.example`): `DB_PATH` (por defecto `data/wallee.sqlite`, o `:memory:`) y `DB_SEED`. Sin `DB_SEED` se siembra fuera de producción; `true` o `false` lo fuerzan. La semilla repone idempotentemente `wallet-demo` con 100000 céntimos, dos asientos `FUNDING` de apertura y los destinatarios demo, como `/control/reset` del mock. Para volver al saldo inicial en local, detén el backend y borra `backend/data/`. Compose guarda la base en el volumen `wallee-data` (`/app/data`). Los datos son simulados, no una integración con BCP.
+
+## W2: transferencia simulada
+
+La pantalla `/transferir` (enlace "Hacer una transferencia" al terminar el onboarding) envía dinero desde `wallet-demo` a `contact-demo` o `merchant-demo`. El resultado del proveedor simulado se elige en el formulario: `APPROVED`, `REJECTED` o `PENDING`. Para un pago pendiente, el botón "Simular confirmación del proveedor" lo completa. Las wallets creadas en el onboarding aún son en memoria y no tienen saldo, por eso la transferencia usa la wallet semilla.
+
+Rutas del backend (contrato del mock, con JSON en camelCase y errores `{ code, message, errors? }`):
+
+| Ruta | Comportamiento |
+| --- | --- |
+| `POST /payments` | Requiere `Idempotency-Key` (1 a 200). Crea un pago `PENDING` y reserva saldo: `202`; el mismo contenido con la misma clave devuelve `200`, contenido distinto `409 IDEMPOTENCY_CONFLICT`. Otros errores: `400 VALIDATION_ERROR`, `404 WALLET_NOT_FOUND`, `409 WALLET_NOT_ACTIVE` y `409 INSUFFICIENT_FUNDS`. |
+| `POST /payments/:id/resolve` | Aplica el resultado del proveedor (`200`: descuenta saldo y crea dos asientos, o libera la reserva). Si sigue pendiente devuelve `202` y abre un único caso de soporte. Repetir no duplica efectos. |
+| `POST /control/provider/:id/complete` | Finaliza un proveedor pendiente (`SUCCEEDED` por defecto o `REJECTED`). |
+| `GET /payments`, `GET /payments/:id`, `GET /payments/:id/receipt`, `GET /wallets/:id` | Historial (`walletId`, por defecto `wallet-demo`), pago, comprobante (`409 RECEIPT_NOT_READY` si no terminó) y saldos (`available = balance - reserved`). |
+
+No implementado del mock: QR (`qrId` se rechaza), reversos, `DELAYED_APPROVAL`, `TIMEOUT_AFTER_PROCESSING`, `PROVIDER_ERROR`, `/callbacks/payments` (`resolve` cumple su papel), `/ledger`, `/settlements` y conciliación. Todo es simulado: no hay integración real con BCP. La HU y los criterios de aceptación de W2 están pendientes de confirmar.
 
 ## Requisitos
 

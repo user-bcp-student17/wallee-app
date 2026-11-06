@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { requestOnboarding } from './api/onboarding';
 import Landing from './landing/Landing';
+import Transfer from './transfer/Transfer';
 import type { FieldError, Progress, Step } from './api/onboarding';
 const steps: { id: Step; label: string; title: string; description: string }[] = [
   { id: 'datos', label: 'Tus datos', title: 'Empecemos por ti', description: 'Cuéntanos cómo podemos identificarte.' },
@@ -22,6 +23,8 @@ export default function App() {
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const [showTransfer, setShowTransfer] = useState(false);
 
   async function send(path: string, method: 'POST' | 'PUT', body: Record<string, string>) {
     setBusy(true);
@@ -50,6 +53,9 @@ export default function App() {
     const body = Object.fromEntries(fields[step].map(({ name }) => [name, values[name] ?? '']));
     void send(`/onboarding/${encodeURIComponent(progress.onboardingId)}/steps/${step}`, 'PUT', body);
   }
+
+  if (showTransfer && progress) return <Transfer walletId={progress.walletId} />;
+  if (window.location.pathname === '/transferir') return <Transfer />;
 
   if (!progress) return <Landing busy={busy} message={message} onStart={() => void send('/onboarding', 'POST', {})} />;
 
@@ -80,7 +86,7 @@ export default function App() {
             </nav>
             {message && <div className="form-error" role="alert">{message}</div>}
             {complete ? (
-              <div className="content"><div className="success-mark" aria-hidden="true">✓</div><div className="small-label">TODO LISTO</div><h2>Tu wallet está activa.</h2><p>Completaste tu registro. Tu wallet está lista.</p><p className="wallet-id">ID DE WALLET<br /><strong>{progress.walletId}</strong></p></div>
+              <div className="content"><div className="success-mark" aria-hidden="true">✓</div><div className="small-label">TODO LISTO</div><h2>Tu wallet está activa.</h2><p>Completaste tu registro. Tu wallet está lista.</p><p className="wallet-id">ID DE WALLET<br /><strong>{progress.walletId}</strong></p><a className="primary" href="/transferir" onClick={(event) => { event.preventDefault(); window.history.pushState({}, '', '/transferir'); setShowTransfer(true); }}>Hacer una transferencia <span aria-hidden="true">→</span></a></div>
             ) : current ? (
               <div className="content"><div className="small-label">PASO 0{steps.findIndex((step) => step.id === current.id) + 1} DE 03</div><h2>{current.title}</h2><p>{current.description}</p>
                 <form onSubmit={submit} noValidate>
