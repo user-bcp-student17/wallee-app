@@ -1,49 +1,72 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 
-function mockFetch(response: Partial<Response> | Error) {
-  const fetchMock = response instanceof Error ? vi.fn().mockRejectedValue(response) : vi.fn().mockResolvedValue(response);
-  vi.stubGlobal('fetch', fetchMock);
-  return fetchMock;
+const stepNames = ['datos', 'identidad', 'verificacion'];
+function progress(index: number) {
+  return {
+    onboardingId: 'onb_1', walletId: 'wal_1', status: index === 3 ? 'COMPLETADO' : 'EN_CURSO',
+    currentStep: stepNames[index] ?? null, walletStatus: index === 3 ? 'ACTIVA' : 'PENDIENTE_ONBOARDING',
+    steps: stepNames.map((id, stepIndex) => ({ id, status: stepIndex < index ? 'COMPLETADO' : 'PENDIENTE' })),
+  };
+}
+function response(data: unknown, ok = true) {
+  return { ok, json: async () => data };
 }
 
-describe('App', () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+describe('W1 AC1-AC3: asistente de onboarding', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
 
-  it('shows the backend as connected', async () => {
-    const fetchMock = mockFetch({ ok: true, json: async () => ({ status: 'ok', service: 'wallee-backend' }) });
-
+  it('completes the three steps and displays the active wallet', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(response(progress(0))).mockResolvedValueOnce(response(progress(1))).mockResolvedValueOnce(response(progress(2))).mockResolvedValueOnce(response(progress(3)));
+    vi.stubGlobal('fetch', fetchMock);
+    const user = userEvent.setup();
     render(<App />);
-
-    expect(screen.getByRole('status')).toHaveTextContent('Conectando');
-    expect(await screen.findByText('Backend conectado: wallee-backend')).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledWith('/api/health');
+    await user.click(screen.getByRole('button', { name: 'Crear mi wallet' }));
+    await user.type(await screen.findByLabelText('Nombre completo'), 'Ana');
+    await user.type(screen.getByLabelText('Número de celular'), '912345678');
+    await user.click(screen.getByRole('button', { name: 'Continuar' }));
+    await user.type(await screen.findByLabelText('Número de documento'), '12345678');
+    await user.click(screen.getByRole('button', { name: 'Continuar' }));
+    await user.type(await screen.findByLabelText('Código de verificación'), '123456');
+    await user.click(screen.getByRole('button', { name: 'Continuar' }));
+    expect(await screen.findByText('Tu wallet está activa.')).toBeInTheDocument();
+    expect(screen.getByText('wal_1')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/onboarding/onb_1/steps/datos', expect.objectContaining({ method: 'PUT', body: JSON.stringify({ nombre: 'Ana', celular: '912345678' }) }));
   });
 
-  it('shows an error when the backend answers with a failure', async () => {
-    mockFetch({ ok: false, status: 503 });
-
+  it('shows field errors from the server and clears them when edited', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(response(progress(0))).mockResolvedValueOnce(response({ message: 'Corrige los campos indicados.', errors: [{ field: 'nombre', message: 'Ingresa tu nombre.' }] }, false)));
+    const user = userEvent.setup();
     render(<App />);
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('El backend respondió 503');
+    await user.click(screen.getByRole('button', { name: 'Crear mi wallet' }));
+    await user.click(await screen.findByRole('button', { name: 'Continuar' }));
+    expect(await screen.findByText('Ingresa tu nombre.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Nombre completo')).toHaveAttribute('aria-invalid', 'true');
+    await user.type(screen.getByLabelText('Nombre completo'), 'Ana');
+    expect(screen.queryByText('Ingresa tu nombre.')).not.toBeInTheDocument();
   });
 
-  it('shows an error when the backend is unreachable', async () => {
-    mockFetch(new Error('Failed to fetch'));
-
+  it('offers an error when the service cannot be reached', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     render(<App />);
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to fetch');
+    await userEvent.click(screen.getByRole('button', { name: 'Crear mi wallet' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo conectar');
+    expect(screen.getByRole('button', { name: 'Crear mi wallet' })).toBeEnabled();
   });
 
-  it('ignores the result once unmounted', () => {
-    mockFetch({ ok: true, json: async () => ({ status: 'ok', service: 'wallee-backend' }) });
+  it('shows a fallback error for an unexpected API failure', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({}, false)));
+    render(<App />);
+    await userEvent.click(screen.getByRole('button', { name: 'Crear mi wallet' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudo completar');
+  });
 
-    const { unmount } = render(<App />);
-
-    expect(() => unmount()).not.toThrow();
+  it('does not claim activation for invalid progress', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ ...progress(3), walletStatus: 'PENDIENTE_ONBOARDING' })));
+    render(<App />);
+    await userEvent.click(screen.getByRole('button', { name: 'Crear mi wallet' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('progreso recibido no es válido');
   });
 });

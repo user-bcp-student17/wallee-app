@@ -7,7 +7,12 @@ services:
       target: runtime
     environment:
       PORT: "3000"
+      NODE_ENV: development
       CORS_ORIGINS: http://localhost:${FRONTEND_PORT:-8090}
+      DB_PATH: /app/data/wallee.sqlite
+      DB_SEED: "true"
+    volumes:
+      - wallee-data:/app/data
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
@@ -26,3 +31,5 @@ services:
       backend:
         condition: service_healthy
     restart: unless-stopped
+volumes:
+  wallee-data:
