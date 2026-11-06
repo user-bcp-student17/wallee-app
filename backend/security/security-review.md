@@ -1,0 +1,26 @@
+<!-- security/security-review.md -->
+# Revisión de seguridad — W1 Onboarding
+
+## Alcance y limitación
+
+Revisión de escritorio basada solo en el spec, discovery, mapa y detección estructural proporcionados. No se ejecutó análisis estático, auditoría de dependencias, revisión de logs ni prueba dinámica. No se inspeccionó código fuente suficiente para confirmar controles implementados. Los estados de abajo no afirman que una verificación haya pasado.
+
+| Control | Ubicación / evidencia disponible | Impacto si falla | Corrección o control requerido | Verificación propuesta | Estado |
+|---|---|---|---|---|---|
+| SEC-01 Secretos y `.env.example` | No se aportó contenido del repositorio ni del `.env.example`. | Exposición de credenciales, OTP o configuración sensible. | Revisar que solo existan valores ficticios en `.env.example`; excluir secretos del repo; rotar cualquier secreto real si se descubre. | Búsqueda por patrones y gitleaks ejecutados por la persona; registrar salida real. | NO VERIFICADO |
+| SEC-02 Datos sintéticos | Las entradas de prueba propuestas son datos inventados; no se inspeccionó la base de datos ni fixtures existentes. | Exposición de datos personales en pruebas/demo. | Usar exclusivamente fixtures sintéticos para nombre, celular y documento; no copiar datos reales. | Inspeccionar fixtures, pruebas y datos locales antes de compartir evidencia. | PROPUESTO; NO VERIFICADO |
+| SEC-03 Logs sin datos sensibles | No se aportaron logs de la app. | Fuga de celular completo, documento, OTP o tokens en logs. | Enmascarar o excluir identificadores y secretos de logs; evitar registrar el código OTP. | Ejecutar recorrido sintético y revisar logs reales; comprobar ausencia de valores completos. | NO VERIFICADO |
+| SEC-04 Errores sin detalles internos | El contrato propone HTTP adecuado, código de motivo estable y mensajes accionables; no se inspeccionó la implementación. | Filtración de stack trace, rutas, SQL o configuración interna. | Mantener errores públicos controlados; registrar detalle técnico solo en logs protegidos y saneados. | Casos de validación y errores; revisar respuestas para stack traces y detalles internos. | NO VERIFICADO |
+| SEC-05 Entradas manipuladas | El spec define validación de nombre, celular y código; diseño propone documento de ocho dígitos. No se inspeccionaron DTOs ni consultas. | Inyección, corrupción de datos, fallos de validación o XSS si el nombre se muestra sin escape. | DTOs con validación del servidor; límites de longitud; consultas parametrizadas; escapar salida en UI. La política de caracteres permitidos para nombre no está definida y no debe inventarse. | Casos EP/BVA propuestos; revisar consultas y renderizado; entradas hostiles con evidencia real. | PARCIALMENTE DEFINIDO; NO EJECUTADO |
+| SEC-06 Separación por usuario / wallet | `design.md` declara autenticación y sesiones fuera de alcance. No hay mecanismo de identidad/propiedad especificado para restringir `GET /onboarding/:id` y `GET /wallets/:id`. | Un cliente que conozca o adivine un identificador podría leer datos o consultar otra wallet. | Definir un mecanismo de propiedad/autorización antes de exponer los endpoints fuera de demo aislada. El identificador opaco por sí solo no sustituye autorización. | Prueba con dos identidades sintéticas; confirmar acceso propio y rechazo de acceso cruzado. | RIESGO DE DISEÑO ALTO; decisión requerida |
+| SEC-07 El agente no mueve dinero ni ejecuta reversos | Pagos y reversos están fuera del alcance W1; no se aportó comportamiento del Crew. | Acción monetaria autónoma si un agente se conecta indebidamente a herramientas. | Mantener W1 aislado de herramientas monetarias; revisar guardrails del Crew en la capa que incluya ese alcance. | Pruebas deterministas del Crew cuando corresponda; no se ejecutaron en este trabajo. | FUERA DEL ALCANCE W1; NO VERIFICADO |
+| SEC-08 HITL para reversos, disputas y excepciones críticas | W1 no implementa reversos ni disputas; no se aportó evidencia del Crew. | Ejecución sin aprobación humana de acciones críticas. | Aprobación humana obligatoria en el alcance que gestione dichas acciones; escalar excepciones con contexto. | Suite de guardrails/HITL correspondiente; no ejecutada aquí. | FUERA DEL ALCANCE W1; NO VERIFICADO |
+| SEC-09 No inventar resultados | No se ejecutaron comandos ni pruebas; la evidencia se marca NO EJECUTADO. | Reportes engañosos o decisiones basadas en resultados ficticios. | Adjuntar salidas reales de la persona antes de marcar tests o tareas como hechos. | Revisar que cada resultado incluya comando y salida real aportada. | CUMPLIDO EN ESTE INFORME; sin ejecución que reportar |
+
+## Dependencias de seguridad pendientes
+
+- Auditoría de dependencias con `npm audit` en la app; no ejecutada.
+- Revisión de código con `eslint-plugin-security`; no se conoce ni se ejecutó el comando disponible.
+- Búsqueda de secretos con gitleaks o patrones; no ejecutada.
+- Confirmar autorización y propiedad de wallet, además de política de acceso para endpoints de onboarding.
+- Confirmar valores de diseño marcados PROPUESTO antes de cerrar las pruebas dependientes de ellos.
