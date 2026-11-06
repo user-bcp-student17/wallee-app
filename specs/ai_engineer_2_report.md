@@ -1,31 +1,286 @@
-### `frontend-react/src/onboarding/onboarding.types.ts` — 6.1, 6.2 y 6.3: progreso, pasos y errores de API
+La tarea **5.1** está asignada a AI Engineer 1; los siguientes archivos proponen el registro e integración de eventos en el servicio proporcionado, sin marcar tareas como completadas. Los archivos frontend cubren las entregas **6.1, 6.2 y 6.3**. Los eventos y sus marcas de tiempo se generan exclusivamente en el servidor.
 
 ```ts
-// frontend-react/src/onboarding/onboarding.types.ts
-// Cubre 6.1 (pasos), 6.2 (errores de validación) y 6.3 (estado de wallet).
+// backend-nestjs/src/onboarding/domain/onboarding-event.model.ts
+// Criterio: 5.1 — tipos de eventos y marca de tiempo generada por el servidor.
+
+import { OnboardingStepKey } from "./onboarding.model";
+
+export type OnboardingEventType =
+  | "onboarding_started"
+  | "onboarding_step_completed"
+  | "onboarding_completed";
+
+export interface OnboardingEvent {
+  id: string;
+  onboardingId: string;
+  type: OnboardingEventType;
+  step?: OnboardingStepKey;
+  occurredAt: string;
+}
+```
+
+```ts
+// backend-nestjs/src/onboarding/application/onboarding.service.ts
+// Criterios: 5.1 — registra eventos en orden; mantiene las transiciones existentes del onboarding.
+
+import { randomUUID } from "node:crypto";
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import {
+  isOnboardingStepKey,
+  ONBOARDING_STEP_KEYS,
+  OnboardingProgress,
+  OnboardingRecord,
+  OnboardingStepKey,
+} from "../domain/onboarding.model";
+import { OnboardingEvent } from "../domain/onboarding-event.model";
+
+@Injectable()
+export class OnboardingService {
+  // Persistencia en memoria, igual que los registros de onboarding existentes.
+  private readonly onboardings = new Map<string, OnboardingRecord>();
+  private readonly events = new Map<string, OnboardingEvent[]>();
+
+  start(): OnboardingProgress {
+    const onboardingId = `onb_${randomUUID()}`;
+    const walletId = `wal_${randomUUID()}`;
+
+    const record: OnboardingRecord = {
+      id: onboardingId,
+      walletId,
+      status: "EN_CURSO",
+      currentStep: ONBOARDING_STEP_KEYS[0],
+      steps: ONBOARDING_STEP_KEYS.map((id) => ({
+        id,
+        status: "PENDIENTE",
+      })),
+      walletStatus: "PENDIENTE_ONBOARDING",
+      data: {},
+    };
+
+    this.onboardings.set(record.id, record);
+    this.events.set(record.id, []);
+    this.recordEvent(record.id, "onboarding_started");
+
+    return this.toProgress(record);
+  }
+
+  getProgress(id: string): OnboardingProgress {
+    const record = this.onboardings.get(id);
+    if (!record) {
+      throw this.notFound();
+    }
+
+    return this.toProgress(record);
+  }
+
+  /**
+   * Devuelve una copia de los eventos del intento para pruebas y consumidores
+   * internos. No acepta marcas de tiempo proporcionadas por el cliente.
+   */
+  getEvents(id: string): OnboardingEvent[] {
+    if (!this.onboardings.has(id)) {
+      throw this.notFound();
+    }
+
+    return (this.events.get(id) ?? []).map((event) => ({ ...event }));
+  }
+
+  completeStep(
+    id: string,
+    stepKey: string,
+    payload: Record<string, string>,
+  ): OnboardingProgress {
+    const record = this.onboardings.get(id);
+    if (!record) {
+      throw this.notFound();
+    }
+
+    if (!isOnboardingStepKey(stepKey) || record.currentStep !== stepKey) {
+      throw new ConflictException({
+        statusCode: 409,
+        code: "STEP_OUT_OF_ORDER",
+        message: "Completa primero el paso actual del onboarding.",
+      });
+    }
+
+    const step = record.steps.find((item) => item.id === stepKey);
+    if (!step || step.status === "COMPLETADO") {
+      throw new ConflictException({
+        statusCode: 409,
+        code: "STEP_OUT_OF_ORDER",
+        message: "El paso solicitado no está disponible.",
+      });
+    }
+
+    record.data[stepKey] = payload;
+    step.status = "COMPLETADO";
+
+    const currentIndex = ONBOARDING_STEP_KEYS.indexOf(
+      stepKey as OnboardingStepKey,
+    );
+    const nextStep = ONBOARDING_STEP_KEYS[currentIndex + 1] ?? null;
+
+    if (nextStep) {
+      record.currentStep = nextStep;
+    } else {
+      record.currentStep = null;
+      record.status = "COMPLETADO";
+      record.walletStatus = "ACTIVA";
+    }
+
+    this.recordEvent(record.id, "onboarding_step_completed", stepKey);
+
+    if (record.status === "COMPLETADO") {
+      this.recordEvent(record.id, "onboarding_completed");
+    }
+
+    return this.toProgress(record);
+  }
+
+  private recordEvent(
+    onboardingId: string,
+    type: OnboardingEvent["type"],
+    step?: OnboardingStepKey,
+  ): void {
+    const onboardingEvents = this.events.get(onboardingId);
+    if (!onboardingEvents) {
+      return;
+    }
+
+    onboardingEvents.push({
+      id: `evt_${randomUUID()}`,
+      onboardingId,
+      type,
+      ...(step ? { step } : {}),
+      occurredAt: new Date().toISOString(),
+    });
+  }
+
+  private notFound(): NotFoundException {
+    return new NotFoundException({
+      statusCode: 404,
+      code: "ONBOARDING_NOT_FOUND",
+      message: "No se encontró el onboarding solicitado.",
+    });
+  }
+
+  private toProgress(record: OnboardingRecord): OnboardingProgress {
+    return {
+      onboardingId: record.id,
+      walletId: record.walletId,
+      status: record.status,
+      currentStep: record.currentStep,
+      steps: record.steps.map((step) => ({ ...step })),
+      walletStatus: record.walletStatus,
+    };
+  }
+}
+```
+
+```ts
+// backend-nestjs/src/onboarding/application/onboarding.service.spec.ts
+// Criterio: 5.1 — prueba el orden de eventos y que sus timestamps los genera el servidor.
+
+import { OnboardingService } from "./onboarding.service";
+
+describe("OnboardingService — eventos (5.1)", () => {
+  let service: OnboardingService;
+
+  beforeEach(() => {
+    service = new OnboardingService();
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it("registra inicio, cada paso y cierre en el orden esperado", () => {
+    const progress = service.start();
+
+    jest.advanceTimersByTime(1_000);
+    service.completeStep(progress.onboardingId, "datos", {
+      nombre: "Usuario de prueba",
+      celular: "900000000",
+    });
+
+    jest.advanceTimersByTime(1_000);
+    service.completeStep(progress.onboardingId, "identidad", {
+      documento: "00000000",
+    });
+
+    jest.advanceTimersByTime(1_000);
+    const completed = service.completeStep(
+      progress.onboardingId,
+      "verificacion",
+      { codigo: "000000" },
+    );
+
+    const events = service.getEvents(progress.onboardingId);
+
+    expect(events.map(({ type, step }) => ({ type, step }))).toEqual([
+      { type: "onboarding_started", step: undefined },
+      { type: "onboarding_step_completed", step: "datos" },
+      { type: "onboarding_step_completed", step: "identidad" },
+      { type: "onboarding_step_completed", step: "verificacion" },
+      { type: "onboarding_completed", step: undefined },
+    ]);
+
+    expect(events.map((event) => event.occurredAt)).toEqual([
+      "2026-01-01T00:00:00.000Z",
+      "2026-01-01T00:00:01.000Z",
+      "2026-01-01T00:00:02.000Z",
+      "2026-01-01T00:00:03.000Z",
+      "2026-01-01T00:00:03.000Z",
+    ]);
+
+    expect(completed.status).toBe("COMPLETADO");
+    expect(completed.walletStatus).toBe("ACTIVA");
+  });
+
+  it("no registra el evento de un paso rechazado por orden", () => {
+    const progress = service.start();
+
+    expect(() =>
+      service.completeStep(progress.onboardingId, "identidad", {
+        documento: "00000000",
+      }),
+    ).toThrow();
+
+    expect(service.getEvents(progress.onboardingId)).toHaveLength(1);
+  });
+});
+```
+
+```ts
+// frontend-react/src/onboarding/types.ts
+// Criterios: 6.1 y 6.3 — tipos para el progreso consumido desde la API.
 
 export const ONBOARDING_STEPS = [
-  { id: "datos", label: "Tus datos" },
+  { id: "datos", label: "Datos personales" },
   { id: "identidad", label: "Identidad" },
   { id: "verificacion", label: "Verificación" },
 ] as const;
 
 export type OnboardingStepKey = (typeof ONBOARDING_STEPS)[number]["id"];
-export type OnboardingStepStatus = "PENDIENTE" | "COMPLETADO";
 export type OnboardingStatus = "EN_CURSO" | "COMPLETADO";
 export type WalletStatus = "PENDIENTE_ONBOARDING" | "ACTIVA";
-
-export interface OnboardingStep {
-  id: OnboardingStepKey;
-  status: OnboardingStepStatus;
-}
 
 export interface OnboardingProgress {
   onboardingId: string;
   walletId: string;
   status: OnboardingStatus;
   currentStep: OnboardingStepKey | null;
-  steps: OnboardingStep[];
+  steps: Array<{
+    id: OnboardingStepKey;
+    status: "PENDIENTE" | "COMPLETADO";
+  }>;
   walletStatus: WalletStatus;
 }
 
@@ -34,46 +289,37 @@ export interface ApiFieldError {
   message: string;
 }
 
-export interface ApiErrorPayload {
-  statusCode?: number;
+export interface ApiErrorBody {
   code?: string;
-  message?: string | string[];
+  message?: string;
   errors?: ApiFieldError[];
 }
 ```
 
-### `frontend-react/src/onboarding/onboarding-api.ts` — 6.1 y 6.2: consumo del contrato REST y normalización de errores
-
 ```ts
-// frontend-react/src/onboarding/onboarding-api.ts
-// Cubre 6.1 (inicio y envío de pasos) y 6.2 (lectura de errores de API).
+// frontend-react/src/onboarding/onboardingApi.ts
+// Criterios: 6.1 y 6.2 — consumo de API, errores HTTP y URL configurable.
 
 import type {
-  ApiErrorPayload,
-  ApiFieldError,
+  ApiErrorBody,
   OnboardingProgress,
   OnboardingStepKey,
-} from "./onboarding.types";
+} from "./types";
 
-const configuredBaseUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
-const API_BASE_URL = configuredBaseUrl.replace(/\/+$/, "");
+const API_URL =
+  import.meta.env.VITE_API_URL?.trim() || "http://localhost:3000";
 
 export class OnboardingApiError extends Error {
   readonly status: number;
   readonly code?: string;
-  readonly fieldErrors: ApiFieldError[];
+  readonly fieldErrors: ApiErrorBody["errors"];
 
-  constructor(
-    message: string,
-    status: number,
-    code?: string,
-    fieldErrors: ApiFieldError[] = [],
-  ) {
-    super(message);
+  constructor(status: number, body: ApiErrorBody) {
+    super(body.message || "No se pudo completar la solicitud.");
     this.name = "OnboardingApiError";
     this.status = status;
-    this.code = code;
-    this.fieldErrors = fieldErrors;
+    this.code = body.code;
+    this.fieldErrors = body.errors;
   }
 }
 
@@ -81,7 +327,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
 
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    response = await fetch(`${API_URL}${path}`, {
       ...init,
       headers: {
         Accept: "application/json",
@@ -90,573 +336,319 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       },
     });
   } catch {
-    throw new OnboardingApiError(
-      "No se pudo conectar con el servicio. Revisa tu conexión e inténtalo de nuevo.",
-      0,
-    );
+    throw new OnboardingApiError(0, {
+      message: "No se pudo conectar con el servidor. Inténtalo de nuevo.",
+    });
   }
 
-  const payload: unknown = await response.json().catch(() => null);
+  const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const body = (payload ?? {}) as ApiErrorPayload;
-    const fieldErrors = Array.isArray(body.errors)
-      ? body.errors.filter(
-          (item): item is ApiFieldError =>
-            typeof item?.field === "string" && typeof item?.message === "string",
-        )
-      : [];
-
-    const message = Array.isArray(body.message)
-      ? body.message.join(" ")
-      : typeof body.message === "string"
-        ? body.message
-        : "No se pudo completar la solicitud. Inténtalo de nuevo.";
-
     throw new OnboardingApiError(
-      message,
       response.status,
-      body.code,
-      fieldErrors,
+      body && typeof body === "object" ? (body as ApiErrorBody) : {},
     );
   }
 
-  return payload as T;
+  return body as T;
 }
 
-export const onboardingApi = {
-  start(): Promise<OnboardingProgress> {
-    return request<OnboardingProgress>("/onboarding", {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
-  },
+export function startOnboarding(): Promise<OnboardingProgress> {
+  return request<OnboardingProgress>("/onboarding", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
 
-  getProgress(onboardingId: string): Promise<OnboardingProgress> {
-    return request<OnboardingProgress>(
-      `/onboarding/${encodeURIComponent(onboardingId)}`,
-    );
-  },
+export function getOnboarding(
+  onboardingId: string,
+): Promise<OnboardingProgress> {
+  return request<OnboardingProgress>(
+    `/onboarding/${encodeURIComponent(onboardingId)}`,
+  );
+}
 
-  completeStep(
-    onboardingId: string,
-    step: OnboardingStepKey,
-    payload: Record<string, string>,
-  ): Promise<OnboardingProgress> {
-    return request<OnboardingProgress>(
-      `/onboarding/${encodeURIComponent(onboardingId)}/steps/${step}`,
-      {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      },
-    );
-  },
-};
-```
-
-### `frontend-react/src/onboarding/useOnboarding.ts` — 6.1 y 6.2: estado de carga, envío y errores
-
-```ts
-// frontend-react/src/onboarding/useOnboarding.ts
-// Cubre 6.1 (progreso) y 6.2 (bloqueo ante error y errores por campo).
-
-import { useState } from "react";
-import {
-  onboardingApi,
-  OnboardingApiError,
-} from "./onboarding-api";
-import type {
-  ApiFieldError,
-  OnboardingProgress,
-  OnboardingStepKey,
-} from "./onboarding.types";
-
-export function useOnboarding() {
-  const [progress, setProgress] = useState<OnboardingProgress | null>(null);
-  const [isStarting, setIsStarting] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<ApiFieldError[]>([]);
-
-  async function start() {
-    setIsStarting(true);
-    setFormError(null);
-    setFieldErrors([]);
-
-    try {
-      const result = await onboardingApi.start();
-      setProgress(result);
-    } catch (error) {
-      setFormError(
-        error instanceof Error
-          ? error.message
-          : "No se pudo iniciar el onboarding.",
-      );
-    } finally {
-      setIsStarting(false);
-    }
-  }
-
-  async function submitCurrentStep(payload: Record<string, string>) {
-    if (!progress?.currentStep || isSubmitting) return;
-
-    setIsSubmitting(true);
-    setFormError(null);
-    setFieldErrors([]);
-
-    try {
-      const result = await onboardingApi.completeStep(
-        progress.onboardingId,
-        progress.currentStep as OnboardingStepKey,
-        payload,
-      );
-      setProgress(result);
-    } catch (error) {
-      if (error instanceof OnboardingApiError) {
-        setFieldErrors(error.fieldErrors);
-        setFormError(error.message);
-      } else {
-        setFormError("No se pudo enviar el paso. Inténtalo de nuevo.");
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  function clearFieldError(field: string) {
-    setFieldErrors((current) => current.filter((error) => error.field !== field));
-  }
-
-  return {
-    progress,
-    isStarting,
-    isSubmitting,
-    formError,
-    fieldErrors,
-    start,
-    submitCurrentStep,
-    clearFieldError,
-  };
+export function submitOnboardingStep(
+  onboardingId: string,
+  step: OnboardingStepKey,
+  payload: Record<string, string>,
+): Promise<OnboardingProgress> {
+  return request<OnboardingProgress>(
+    `/onboarding/${encodeURIComponent(onboardingId)}/steps/${step}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 ```
-
-### `frontend-react/src/onboarding/OnboardingWizard.tsx` — 6.1, 6.2 y 6.3: asistente accesible
 
 ```tsx
-// frontend-react/src/onboarding/OnboardingWizard.tsx
-// Cubre 6.1 (indicador y formularios), 6.2 (errores y bloqueo) y 6.3 (entrada solo con wallet ACTIVA).
+// frontend-react/src/onboarding/OnboardingApp.tsx
+// Criterios: 6.1 — indicador y formularios; 6.2 — errores y paso conservado; 6.3 — acceso solo con wallet ACTIVA.
 
 import { FormEvent, useState } from "react";
-import { useOnboarding } from "./useOnboarding";
+import {
+  OnboardingApiError,
+  startOnboarding,
+  submitOnboardingStep,
+} from "./onboardingApi";
 import {
   ONBOARDING_STEPS,
+  OnboardingProgress,
   OnboardingStepKey,
-} from "./onboarding.types";
-import "./onboarding.css";
+} from "./types";
 
-type FormValues = Record<string, string>;
-type LocalErrors = Record<string, string>;
+type FieldName = "nombre" | "celular" | "documento" | "codigo";
 
-const FIELD_LABELS: Record<string, string> = {
+const FIELD_BY_STEP: Record<OnboardingStepKey, FieldName[]> = {
+  datos: ["nombre", "celular"],
+  identidad: ["documento"],
+  verificacion: ["codigo"],
+};
+
+const FIELD_LABELS: Record<FieldName, string> = {
   nombre: "Nombre",
   celular: "Celular",
   documento: "Documento",
   codigo: "Código de verificación",
 };
 
-function validateStep(
-  step: OnboardingStepKey,
-  values: FormValues,
-): LocalErrors {
-  const errors: LocalErrors = {};
-
-  if (step === "datos") {
-    if (!values.nombre?.trim()) {
-      errors.nombre = "Ingresa tu nombre.";
-    }
-
-    if (!values.celular?.trim()) {
-      errors.celular = "Ingresa tu celular.";
-    } else if (!/^9\d{8}$/.test(values.celular)) {
-      errors.celular = "Debe tener 9 dígitos y empezar con 9.";
-    }
+function getErrorMessage(error: unknown): string {
+  if (error instanceof OnboardingApiError) {
+    return error.message;
   }
-
-  if (step === "identidad") {
-    if (!values.documento?.trim()) {
-      errors.documento = "Ingresa tu documento.";
-    } else if (!/^\d{8}$/.test(values.documento)) {
-      errors.documento = "El documento debe tener 8 dígitos.";
-    }
-  }
-
-  if (step === "verificacion" && !values.codigo?.trim()) {
-    errors.codigo = "Ingresa el código de verificación.";
-  }
-
-  return errors;
+  return "Ocurrió un error inesperado. Inténtalo de nuevo.";
 }
 
-function PaymentEntry() {
-  return (
-    <section className="payment-entry" aria-labelledby="payment-entry-title">
-      <h2 id="payment-entry-title">Punto de entrada de pagos</h2>
-      <p>Tu wallet está activa y habilita el acceso al flujo de pagos.</p>
-      <a href="/payments">Ir al punto de pagos</a>
-      <p className="helper-text">
-        Esta entrada no ejecuta pagos; las operaciones de pago pertenecen a
-        otro flujo.
-      </p>
-    </section>
-  );
-}
+export default function OnboardingApp() {
+  const [progress, setProgress] = useState<OnboardingProgress | null>(null);
+  const [values, setValues] = useState<Partial<Record<FieldName, string>>>({});
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<FieldName, string>>
+  >({});
+  const [requestError, setRequestError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-export function OnboardingWizard() {
-  const {
-    progress,
-    isStarting,
-    isSubmitting,
-    formError,
-    fieldErrors,
-    start,
-    submitCurrentStep,
-    clearFieldError,
-  } = useOnboarding();
+  const activeStep = progress?.currentStep ?? null;
+  const fields = activeStep ? FIELD_BY_STEP[activeStep] : [];
 
-  const [values, setValues] = useState<FormValues>({});
-  const [localErrors, setLocalErrors] = useState<LocalErrors>({});
+  async function handleStart() {
+    setLoading(true);
+    setRequestError("");
+    setFieldErrors({});
 
-  function updateField(field: string, value: string) {
-    setValues((current) => ({ ...current, [field]: value }));
-    setLocalErrors((current) => {
-      const next = { ...current };
-      delete next[field];
-      return next;
-    });
-    clearFieldError(field);
+    try {
+      const result = await startOnboarding();
+      setProgress(result);
+      setValues({});
+    } catch (error) {
+      setRequestError(getErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function serverErrorFor(field: string) {
-    return fieldErrors.find((error) => error.field === field)?.message;
-  }
-
-  function renderField(
-    field: string,
-    label: string,
-    options: {
-      type?: string;
-      inputMode?: "text" | "numeric" | "tel";
-      autoComplete?: string;
-      maxLength?: number;
-      hint?: string;
-    } = {},
-  ) {
-    const error = localErrors[field] ?? serverErrorFor(field);
-    const errorId = `${field}-error`;
-    const hintId = `${field}-hint`;
-
-    return (
-      <div className="form-field" key={field}>
-        <label htmlFor={field}>{label}</label>
-        <input
-          id={field}
-          name={field}
-          type={options.type ?? "text"}
-          inputMode={options.inputMode}
-          autoComplete={options.autoComplete}
-          maxLength={options.maxLength}
-          value={values[field] ?? ""}
-          aria-invalid={Boolean(error)}
-          aria-describedby={
-            [options.hint ? hintId : null, error ? errorId : null]
-              .filter(Boolean)
-              .join(" ") || undefined
-          }
-          onChange={(event) => updateField(field, event.target.value)}
-        />
-        {options.hint && (
-          <span className="helper-text" id={hintId}>
-            {options.hint}
-          </span>
-        )}
-        {error && (
-          <span className="field-error" id={errorId} role="alert">
-            {error}
-          </span>
-        )}
-      </div>
-    );
-  }
-
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!progress || !activeStep || loading) return;
 
-    const step = progress?.currentStep;
-    if (!step || isSubmitting) return;
+    setLoading(true);
+    setRequestError("");
+    setFieldErrors({});
 
-    const errors = validateStep(step, values);
-    setLocalErrors(errors);
+    try {
+      const payload = Object.fromEntries(
+        fields.map((field) => [field, values[field] ?? ""]),
+      );
+      const result = await submitOnboardingStep(
+        progress.onboardingId,
+        activeStep,
+        payload,
+      );
+      setProgress(result);
+      setValues({});
+    } catch (error) {
+      if (error instanceof OnboardingApiError) {
+        const nextFieldErrors: Partial<Record<FieldName, string>> = {};
 
-    if (Object.keys(errors).length > 0) return;
+        for (const item of error.fieldErrors ?? []) {
+          if (item.field in FIELD_LABELS) {
+            nextFieldErrors[item.field as FieldName] = item.message;
+          }
+        }
 
-    const fieldsByStep: Record<OnboardingStepKey, string[]> = {
-      datos: ["nombre", "celular"],
-      identidad: ["documento"],
-      verificacion: ["codigo"],
-    };
-
-    const payload = Object.fromEntries(
-      fieldsByStep[step].map((field) => [field, values[field] ?? ""]),
-    );
-
-    void submitCurrentStep(payload);
+        setFieldErrors(nextFieldErrors);
+      }
+      setRequestError(getErrorMessage(error));
+      // El progreso no se altera ante un error: se conserva el paso actual.
+    } finally {
+      setLoading(false);
+    }
   }
 
-  if (!progress) {
-    return (
-      <main className="onboarding-shell">
-        <h1>Crear tu wallet</h1>
-        <p>Completa los pasos para activar tu wallet.</p>
-
-        {formError && (
-          <div className="form-error" role="alert">
-            {formError}
-          </div>
-        )}
-
-        <button type="button" onClick={() => void start()} disabled={isStarting}>
-          {isStarting ? "Iniciando…" : "Comenzar"}
-        </button>
-
-        {isStarting && (
-          <p role="status" aria-live="polite">
-            Iniciando el onboarding…
-          </p>
-        )}
-      </main>
-    );
+  function updateField(field: FieldName, value: string) {
+    setValues((current) => ({ ...current, [field]: value }));
+    setFieldErrors((current) => ({ ...current, [field]: undefined }));
   }
-
-  const currentStep = progress.currentStep;
-  const isComplete =
-    progress.status === "COMPLETADO" && progress.currentStep === null;
 
   return (
-    <main className="onboarding-shell">
+    <main className="onboarding">
       <h1>Crear tu wallet</h1>
+      <p>Completa los pasos para finalizar el onboarding.</p>
 
-      <nav aria-label="Progreso del onboarding">
-        <ol className="step-indicator">
-          {ONBOARDING_STEPS.map((item, index) => {
-            const stepStatus = progress.steps.find(
-              (step) => step.id === item.id,
-            )?.status;
-            const isCurrent = currentStep === item.id;
-            const isCompleted = stepStatus === "COMPLETADO";
-
-            return (
-              <li
-                key={item.id}
-                className={[
-                  "step-indicator__item",
-                  isCurrent ? "is-current" : "",
-                  isCompleted ? "is-completed" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                aria-current={isCurrent ? "step" : undefined}
-              >
-                <span className="step-indicator__number" aria-hidden="true">
-                  {isCompleted ? "✓" : index + 1}
-                </span>
-                <span>{item.label}</span>
-                <span className="sr-only">
-                  {isCompleted
-                    ? "Completado"
-                    : isCurrent
-                      ? "Paso actual"
-                      : "Pendiente"}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-      </nav>
-
-      {formError && (
-        <div className="form-error" role="alert" aria-live="assertive">
-          {formError}
-        </div>
-      )}
-
-      {isComplete ? (
-        <section aria-labelledby="completion-title">
-          <h2 id="completion-title">Onboarding completado</h2>
-          <p>Tu wallet está activa.</p>
+      {!progress ? (
+        <section aria-labelledby="start-heading">
+          <h2 id="start-heading">Comienza tu onboarding</h2>
+          {requestError && (
+            <p className="error-message" role="alert">
+              {requestError}
+            </p>
+          )}
+          <button type="button" onClick={handleStart} disabled={loading}>
+            {loading ? "Iniciando…" : "Iniciar onboarding"}
+          </button>
         </section>
       ) : (
-        <section aria-labelledby="current-step-title">
-          <h2 id="current-step-title">
-            {ONBOARDING_STEPS.find((step) => step.id === currentStep)?.label}
-          </h2>
+        <>
+          <nav aria-label="Pasos del onboarding">
+            <ol className="step-list">
+              {ONBOARDING_STEPS.map((item) => {
+                const state = progress.steps.find(
+                  (step) => step.id === item.id,
+                )?.status;
+                const isCurrent = progress.currentStep === item.id;
 
-          <form onSubmit={handleSubmit} noValidate>
-            {currentStep === "datos" && (
-              <>
-                {renderField("nombre", FIELD_LABELS.nombre, {
-                  autoComplete: "name",
-                })}
-                {renderField("celular", FIELD_LABELS.celular, {
-                  type: "tel",
-                  inputMode: "tel",
-                  autoComplete: "tel",
-                  maxLength: 9,
-                  hint: "Usa 9 dígitos y comienza con 9.",
-                })}
-              </>
-            )}
+                return (
+                  <li
+                    key={item.id}
+                    className={isCurrent ? "step-current" : undefined}
+                    aria-current={isCurrent ? "step" : undefined}
+                  >
+                    <span>{item.label}</span>
+                    <span className="step-status">
+                      {state === "COMPLETADO"
+                        ? "Completado"
+                        : isCurrent
+                          ? "Paso actual"
+                          : "Pendiente"}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          </nav>
 
-            {currentStep === "identidad" && (
-              <>
-                {renderField("documento", FIELD_LABELS.documento, {
-                  inputMode: "numeric",
-                  autoComplete: "off",
-                  maxLength: 8,
-                  hint: "Ingresa 8 dígitos.",
-                })}
-                <p className="helper-text">
-                  La verificación de identidad de este flujo es simulada
-                  (MOCK); no se conecta a un proveedor real.
-                </p>
-              </>
-            )}
+          {requestError && (
+            <p className="error-message" role="alert">
+              {requestError}
+            </p>
+          )}
 
-            {currentStep === "verificacion" && (
-              <>
-                {renderField("codigo", FIELD_LABELS.codigo, {
-                  inputMode: "numeric",
-                  autoComplete: "one-time-code",
-                  hint: "Verificación simulada (MOCK).",
-                })}
-                <p className="helper-text">
-                  Esta verificación no envía ni valida códigos mediante un
-                  proveedor externo.
-                </p>
-              </>
-            )}
+          {activeStep ? (
+            <form onSubmit={handleSubmit} noValidate>
+              <h2>
+                {ONBOARDING_STEPS.find((step) => step.id === activeStep)?.label}
+              </h2>
 
-            <button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Enviando…" : "Continuar"}
-            </button>
-            {isSubmitting && (
-              <p role="status" aria-live="polite">
-                Enviando el paso…
-              </p>
-            )}
-          </form>
-        </section>
+              {fields.map((field) => {
+                const errorId = `${field}-error`;
+                const inputType =
+                  field === "codigo" || field === "celular" ? "text" : "text";
+
+                return (
+                  <div className="form-field" key={field}>
+                    <label htmlFor={field}>{FIELD_LABELS[field]}</label>
+                    <input
+                      id={field}
+                      name={field}
+                      type={inputType}
+                      value={values[field] ?? ""}
+                      onChange={(event) =>
+                        updateField(field, event.target.value)
+                      }
+                      aria-invalid={Boolean(fieldErrors[field])}
+                      aria-describedby={
+                        fieldErrors[field] ? errorId : undefined
+                      }
+                      autoComplete="off"
+                    />
+                    {fieldErrors[field] && (
+                      <p id={errorId} className="field-error">
+                        {fieldErrors[field]}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+
+              <button type="submit" disabled={loading}>
+                {loading ? "Guardando…" : "Continuar"}
+              </button>
+            </form>
+          ) : (
+            <section aria-live="polite">
+              <h2>Onboarding completado</h2>
+              {progress.walletStatus === "ACTIVA" && (
+                <p>Tu wallet está activa. Ya puedes acceder a pagos.</p>
+              )}
+              {progress.walletStatus === "ACTIVA" && (
+                <a href="/pagos">Ir a pagos</a>
+              )}
+            </section>
+          )}
+        </>
       )}
-
-      {progress.walletStatus === "ACTIVA" && <PaymentEntry />}
     </main>
   );
 }
-
-export default OnboardingWizard;
 ```
-
-### `frontend-react/src/App.tsx` — 6.1: punto de entrada React
 
 ```tsx
 // frontend-react/src/App.tsx
-// Cubre 6.1: monta el asistente de onboarding como vista principal de la aplicación.
+// Criterios: 6.1, 6.2 y 6.3 — punto de entrada React del flujo de onboarding.
 
-import { OnboardingWizard } from "./onboarding/OnboardingWizard";
+import OnboardingApp from "./onboarding/OnboardingApp";
+import "./onboarding/onboarding.css";
 
 export default function App() {
-  return <OnboardingWizard />;
+  return <OnboardingApp />;
 }
 ```
 
-### `frontend-react/src/onboarding/onboarding.css` — 6.1 y 6.2: estados visibles y presentación accesible
-
 ```css
-/* frontend-react/src/onboarding/onboarding.css */
-/* Cubre 6.1 (indicador y formularios) y 6.2 (errores visibles junto al campo). */
+/* frontend-react/src/onboarding/onboarding.css
+ * Criterios: 6.1 y 6.2 — estados visuales legibles para pasos y errores.
+ */
 
-.onboarding-shell {
+.onboarding {
   width: min(100% - 2rem, 42rem);
   margin: 2rem auto;
-  color: #172033;
+  color: #17212b;
   font-family: system-ui, sans-serif;
 }
 
-.onboarding-shell button,
-.onboarding-shell input {
-  font: inherit;
-}
-
-.onboarding-shell button {
-  min-height: 2.75rem;
-  padding: 0.6rem 1rem;
-  border: 0;
-  border-radius: 0.4rem;
-  color: #fff;
-  background: #174ea6;
-  cursor: pointer;
-}
-
-.onboarding-shell button:disabled {
-  cursor: wait;
-  opacity: 0.65;
-}
-
-.onboarding-shell a {
-  color: #174ea6;
-}
-
-.onboarding-shell :focus-visible {
-  outline: 3px solid #f0a000;
-  outline-offset: 3px;
-}
-
-.step-indicator {
+.step-list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.75rem;
-  padding: 0;
-  list-style: none;
+  padding-left: 1.5rem;
 }
 
-.step-indicator__item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 3rem;
-  padding: 0.5rem;
-  border-bottom: 3px solid #c9ced8;
-  color: #4a5363;
+.step-list li {
+  padding: 0.75rem;
+  border: 1px solid #aeb8c2;
+  border-radius: 0.4rem;
 }
 
-.step-indicator__item.is-current {
-  border-color: #174ea6;
-  color: #102f63;
-  font-weight: 700;
+.step-list li.step-current {
+  border: 2px solid #1457a6;
+  background: #f0f6ff;
 }
 
-.step-indicator__item.is-completed {
-  border-color: #16834a;
-  color: #145c38;
-}
-
-.step-indicator__number {
-  display: inline-grid;
-  width: 1.6rem;
-  height: 1.6rem;
-  flex: 0 0 1.6rem;
-  place-items: center;
-  border: 1px solid currentColor;
-  border-radius: 50%;
+.step-status {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.9rem;
 }
 
 .form-field {
@@ -665,60 +657,33 @@ export default function App() {
   margin: 1rem 0;
 }
 
-.form-field input {
-  box-sizing: border-box;
-  width: 100%;
+input,
+button {
   min-height: 2.75rem;
-  padding: 0.5rem;
-  border: 1px solid #70798a;
-  border-radius: 0.3rem;
+  font: inherit;
 }
 
-.form-field input[aria-invalid="true"] {
-  border: 2px solid #b42318;
+input {
+  padding: 0.4rem 0.6rem;
 }
 
-.field-error,
-.form-error {
-  color: #b42318;
+button {
+  padding: 0.5rem 1rem;
+  cursor: pointer;
 }
 
-.form-error {
-  margin: 1rem 0;
+button:disabled {
+  cursor: wait;
+}
+
+.error-message,
+.field-error {
+  color: #9e1b1b;
+}
+
+.error-message {
   padding: 0.75rem;
-  border-left: 4px solid currentColor;
-  background: #fff4f2;
-}
-
-.helper-text {
-  display: block;
-  margin-top: 0.35rem;
-  color: #4a5363;
-  font-size: 0.9rem;
-}
-
-.payment-entry {
-  margin-top: 2rem;
-  padding: 1rem;
-  border: 1px solid #16834a;
-  border-radius: 0.5rem;
-  background: #f3fbf6;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  clip-path: inset(50%);
-}
-
-@media (max-width: 34rem) {
-  .step-indicator {
-    grid-template-columns: 1fr;
-    gap: 0.25rem;
-  }
+  border-left: 4px solid #9e1b1b;
+  background: #fff3f3;
 }
 ```
